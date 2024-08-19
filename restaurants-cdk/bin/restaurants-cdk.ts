@@ -61,7 +61,7 @@ new RestaurantsCdkStack(app, 'RestaurantsCdkStack', {
 
 
   // Students TODO Account Details: change the account and region to your own
-  env: { account: '079553702230', region: 'us-east-1' },
+  env: { account: '294813114505', region: 'us-east-1' },
 
   /* For more information, see https://docs.aws.amazon.com/cdk/latest/guide/environments.html */
 });

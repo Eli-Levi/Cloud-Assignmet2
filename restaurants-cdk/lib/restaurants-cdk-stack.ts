@@ -15,11 +15,11 @@ export class RestaurantsCdkStack extends cdk.Stack {
     const useCacheFlag = true;
 
     // Students TODO Account Details: Change to your account id
-    const labRole = iam.Role.fromRoleArn(this, 'Role', "arn:aws:iam::079553702230:role/LabRole", { mutable: false });
+    const labRole = iam.Role.fromRoleArn(this, 'Role', "arn:aws:iam::294813114505:role/LabRole", { mutable: false });
 
     // Students TODO Account Details: Change the vpcId to the VPC ID of your existing VPC
     const vpc = ec2.Vpc.fromLookup(this, 'VPC', {
-      vpcId: 'vpc-052733467352389cf',
+      vpcId: 'vpc-0317e42f1221f060b',
     });
 
     this.createNatGatewayForPrivateSubnet(vpc);
@@ -159,7 +159,7 @@ export class RestaurantsCdkStack extends cdk.Stack {
     });
     return bucket;
   }
-
+/* original first half of the function
   private createDynamoDBTable() {
     // Students TODO: Change the table schema as needed
 
@@ -169,8 +169,33 @@ export class RestaurantsCdkStack extends cdk.Stack {
       billingMode: dynamodb.BillingMode.PROVISIONED,
       readCapacity: 1, // Note for students: you may need to change this num read capacity for scaling testing if you belive that is right
       writeCapacity: 1, // Note for students: you may need to change this num write capacity for scaling testing if you belive that is right
-    });
-
+    });*/
+  
+    private createDynamoDBTable() {
+      // Students TODO: Change the table schema as needed
+    
+      const table = new dynamodb.Table(this, 'Restaurants', {
+        partitionKey: { name: 'restaurant_id', type: dynamodb.AttributeType.STRING },
+        removalPolicy: cdk.RemovalPolicy.DESTROY,
+        billingMode: dynamodb.BillingMode.PROVISIONED,
+        readCapacity: 1, // Adjust for scaling as needed
+        writeCapacity: 1, // Adjust for scaling as needed
+      });
+    
+      // Add LSI for GeoLocation
+      table.addLocalSecondaryIndex({
+        indexName: 'GeoLocation',
+        sortKey: { name: 'GeoLocation', type: dynamodb.AttributeType.STRING },
+        projectionType: dynamodb.ProjectionType.ALL, // Choose the projection type based on your needs
+      });
+    
+      // Add LSI for cuisine_type
+      table.addLocalSecondaryIndex({
+        indexName: 'CuisineType',
+        sortKey: { name: 'cuisine_type', type: dynamodb.AttributeType.STRING },
+        projectionType: dynamodb.ProjectionType.ALL, // Choose the projection type based on your needs
+      });
+    
     // Output the table name
     new cdk.CfnOutput(this, 'TableName', {
       value: table.tableName,
