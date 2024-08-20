@@ -107,7 +107,7 @@ export class RestaurantsCdkStack extends cdk.Stack {
       vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
       role: labRole,
       minCapacity: 1, // Note for students: you may need to change this min capacity for scaling testing if you belive that is right
-      maxCapacity: 1, // Note for students: you may need to change this max capacity for scaling testing if you belive that is right
+      maxCapacity: 3, // Note for students: you may need to change this max capacity for scaling testing if you belive that is right
       desiredCapacity: 1, // Note for students: you may need to change this desired capacity for scaling testing if you belive that is right
     });
 
@@ -182,28 +182,20 @@ export class RestaurantsCdkStack extends cdk.Stack {
         writeCapacity: 1,
       });
       
-      // GSI for GeoLocation with rating as the sort key
+      // GSI for querying top-rated restaurants by geo_location and cuisine_type
       table.addGlobalSecondaryIndex({
-        indexName: 'GeoLocationIndex',
+        indexName: 'GeoLocationCuisineRatingIndex',
         partitionKey: { name: 'geo_location', type: dynamodb.AttributeType.STRING },
-        sortKey: { name: 'rating', type: dynamodb.AttributeType.NUMBER }, // Sort by rating
+        sortKey: { name: 'cuisine_type_rating', type: dynamodb.AttributeType.STRING }, // Combined key: cuisine_type#rating
         projectionType: dynamodb.ProjectionType.ALL,
       });
       
-      // GSI for cuisine_type with rating as the sort key
-      table.addGlobalSecondaryIndex({
-        indexName: 'CuisineTypeIndex',
-        partitionKey: { name: 'cuisine_type', type: dynamodb.AttributeType.STRING },
-        sortKey: { name: 'rating', type: dynamodb.AttributeType.NUMBER }, // Sort by rating
-        projectionType: dynamodb.ProjectionType.ALL,
-      });
-      
-       // GSI for RestaurantNameIndex with rating as the sort key
+       // GSI for RestaurantNameIndex
        table.addGlobalSecondaryIndex({
         indexName: 'RestaurantNameIndex',
         partitionKey: { name: 'restaurant_name ', type: dynamodb.AttributeType.STRING },
         projectionType: dynamodb.ProjectionType.ALL,
-      });      
+      });    
     
       // Output the table name
       new cdk.CfnOutput(this, 'TableName', {

@@ -26,7 +26,12 @@ app.post('/restaurants', async (req, res) => {
     const dynamodb = new AWS.DynamoDB.DocumentClient();
 
     const restaurant = req.body;
-    const { restaurant_id } = restaurant; // Assuming restaurant_id is the unique identifier
+    const { restaurant_id, restaurant_name, geo_location, cuisine_type, rating } = restaurant; // Ensure these fields are present
+
+    // Input validation
+    if (!restaurant_id || !restaurant_name || !geo_location || !cuisine_type || rating === undefined) {
+        return res.status(400).send({ message: 'Missing required fields' });
+    }
 
     // Define the parameters to check if the restaurant already exists
     const getParams = {
@@ -45,7 +50,7 @@ app.post('/restaurants', async (req, res) => {
             // Restaurant does not exist, add it to the table
             const putParams = {
                 TableName: 'Restaurants',
-                Item: restaurant // Assumes that the restaurant object has all required attributes
+                Item: restaurant // Ensure all required attributes are present
             };
 
             await dynamodb.put(putParams).promise();
@@ -59,16 +64,22 @@ app.post('/restaurants', async (req, res) => {
 });
 
 
+
 app.get('/restaurants/:restaurantName', async (req, res) => {
     const AWS = require('aws-sdk');
     const dynamodb = new AWS.DynamoDB.DocumentClient();
 
     const restaurantName = req.params.restaurantName;
 
+    // Input validation
+    if (!restaurantName) {
+        return res.status(400).send({ message: 'Restaurant name is required' });
+    }
+
     // Define the parameters for querying the DynamoDB table using the GSI
     const queryParams = {
         TableName: 'Restaurants',
-        IndexName: 'RestaurantNameIndex', // The name of the GSI
+        IndexName: 'RestaurantNameIndex', // Ensure this matches the exact name used when creating the GSI
         KeyConditionExpression: 'restaurant_name = :name',
         ExpressionAttributeValues: {
             ':name': restaurantName
@@ -88,9 +99,10 @@ app.get('/restaurants/:restaurantName', async (req, res) => {
         }
     } catch (error) {
         console.error('Error retrieving restaurant:', error);
-         res.status(500).send({ message: 'An error occurred while retrieving the restaurant' });
+        res.status(500).send({ message: 'An error occurred while retrieving the restaurant' });
     }
 });
+
 
 
 app.delete('/restaurants/:restaurantName', async (req, res) => {
@@ -99,10 +111,15 @@ app.delete('/restaurants/:restaurantName', async (req, res) => {
 
     const restaurantName = req.params.restaurantName;
 
+    // Input validation
+    if (!restaurantName) {
+        return res.status(400).send({ message: 'Restaurant name is required' });
+    }
+
     // Define the parameters for querying the DynamoDB table using the GSI
     const queryParams = {
         TableName: 'Restaurants',
-        IndexName: 'RestaurantNameIndex', // The name of the GSI
+        IndexName: 'RestaurantNameIndex', // Ensure this matches the exact name used when creating the GSI
         KeyConditionExpression: 'restaurant_name = :name',
         ExpressionAttributeValues: {
             ':name': restaurantName
@@ -138,6 +155,7 @@ app.delete('/restaurants/:restaurantName', async (req, res) => {
         res.status(500).send({ message: 'An error occurred while deleting the restaurant' });
     }
 });
+
 
 
 app.post('/restaurants/rating', async (req, res) => {
@@ -216,8 +234,8 @@ app.get('/restaurants/cuisine/:cuisine', async (req, res) => {
     // Define the parameters for querying the DynamoDB table using the GSI
     const queryParams = {
         TableName: 'Restaurants',
-        IndexName: 'CuisineRatingIndex', // The name of the GSI (assumes GSI on cuisine and rating)
-        KeyConditionExpression: 'cuisine = :cuisine',
+        IndexName: 'GeoLocationCuisineRatingIndex', // The name of the GSI
+        KeyConditionExpression: 'cuisine_type = :cuisine',
         ExpressionAttributeValues: {
             ':cuisine': cuisine
         },
@@ -258,7 +276,7 @@ app.get('/restaurants/region/:region', async (req, res) => {
     // Define the parameters for querying the DynamoDB table using the GSI
     const queryParams = {
         TableName: 'Restaurants',
-        IndexName: 'RegionRatingIndex', // The name of the GSI (assumes GSI on region and rating)
+        IndexName: 'GeoLocationCuisineRatingIndex', // The name of the GSI (assumes GSI on region and rating)
         KeyConditionExpression: 'region = :region',
         ExpressionAttributeValues: {
             ':region': region
@@ -285,12 +303,53 @@ app.get('/restaurants/region/:region', async (req, res) => {
 });
 
 app.get('/restaurants/region/:region/cuisine/:cuisine', async (req, res) => {
+    const AWS = require('aws-sdk');
+    const dynamodb = new AWS.DynamoDB.DocumentClient();
+
     const region = req.params.region;
     const cuisine = req.params.cuisine;
+    let limit = parseInt(req.query.limit) || 10;
 
-    // Students TODO: Implement the logic to get top rated restaurants by region and cuisine
-    res.status(404).send("need to implement");
+    // Ensure the limit is within the acceptable range
+    if (limit > 100) {
+        limit = 100;
+    }
+
+    // Input validation
+    if (!region || !cuisine) {
+        return res.status(400).send({ message: 'Both region and cuisine are required' });
+    }
+
+    // Define the parameters for querying the DynamoDB table using the GSI
+    const queryParams = {
+        TableName: 'Restaurants',
+        IndexName: 'GeoLocationCuisineRatingIndex', // The name of the GSI
+        KeyConditionExpression: 'geo_location = :region AND cuisine_type = :cuisine',
+        ExpressionAttributeValues: {
+            ':region': region,
+            ':cuisine': cuisine
+        },
+        ScanIndexForward: false, // Sorts results by rating in descending order
+        Limit: limit
+    };
+
+    try {
+        // Perform the query operation
+        const result = await dynamodb.query(queryParams).promise();
+
+        if (result.Items && result.Items.length > 0) {
+            // Restaurants found, return the details
+            res.status(200).send(result.Items);
+        } else {
+            // No restaurants found
+            res.status(404).send({ message: 'No restaurants found for the specified region and cuisine' });
+        }
+    } catch (error) {
+        console.error('Error retrieving restaurants:', error);
+        res.status(500).send({ message: 'An error occurred while retrieving the restaurants' });
+    }
 });
+
 
 app.listen(80, () => {
     console.log('Server is running on http://localhost:80');
