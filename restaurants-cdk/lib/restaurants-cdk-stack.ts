@@ -178,30 +178,39 @@ export class RestaurantsCdkStack extends cdk.Stack {
         partitionKey: { name: 'restaurant_id', type: dynamodb.AttributeType.STRING },
         removalPolicy: cdk.RemovalPolicy.DESTROY,
         billingMode: dynamodb.BillingMode.PROVISIONED,
-        readCapacity: 1, // Adjust for scaling as needed
-        writeCapacity: 1, // Adjust for scaling as needed
+        readCapacity: 1,
+        writeCapacity: 1,
       });
-    
-      // Add LSI for GeoLocation
-      table.addLocalSecondaryIndex({
-        indexName: 'GeoLocation',
-        sortKey: { name: 'GeoLocation', type: dynamodb.AttributeType.STRING },
-        projectionType: dynamodb.ProjectionType.ALL, // Choose the projection type based on your needs
+      
+      // GSI for GeoLocation with rating as the sort key
+      table.addGlobalSecondaryIndex({
+        indexName: 'GeoLocationIndex',
+        partitionKey: { name: 'geo_location', type: dynamodb.AttributeType.STRING },
+        sortKey: { name: 'rating', type: dynamodb.AttributeType.NUMBER }, // Sort by rating
+        projectionType: dynamodb.ProjectionType.ALL,
       });
-    
-      // Add LSI for cuisine_type
-      table.addLocalSecondaryIndex({
-        indexName: 'CuisineType',
-        sortKey: { name: 'cuisine_type', type: dynamodb.AttributeType.STRING },
-        projectionType: dynamodb.ProjectionType.ALL, // Choose the projection type based on your needs
+      
+      // GSI for cuisine_type with rating as the sort key
+      table.addGlobalSecondaryIndex({
+        indexName: 'CuisineTypeIndex',
+        partitionKey: { name: 'cuisine_type', type: dynamodb.AttributeType.STRING },
+        sortKey: { name: 'rating', type: dynamodb.AttributeType.NUMBER }, // Sort by rating
+        projectionType: dynamodb.ProjectionType.ALL,
       });
+      
+       // GSI for RestaurantNameIndex with rating as the sort key
+       table.addGlobalSecondaryIndex({
+        indexName: 'RestaurantNameIndex',
+        partitionKey: { name: 'restaurant_name ', type: dynamodb.AttributeType.STRING },
+        projectionType: dynamodb.ProjectionType.ALL,
+      });      
     
-    // Output the table name
-    new cdk.CfnOutput(this, 'TableName', {
-      value: table.tableName,
-    });
+      // Output the table name
+      new cdk.CfnOutput(this, 'TableName', {
+        value: table.tableName,
+      });
 
-    return table;
+      return table;
   }
 
   createMemcachedSingleInstaceInPublicSubnetForTestingPurpose(vpc: ec2.IVpc, labRole: iam.IRole) {
