@@ -28,10 +28,10 @@ app.post('/restaurants', async (req, res) => {
     const restaurant = req.body;
     const { restaurant_id, restaurant_name, geo_location, cuisine_type, rating } = restaurant; // Ensure these fields are present
 
-    // Input validation
+    /*// Input validation
     if (!restaurant_id || !restaurant_name || !geo_location || !cuisine_type || rating === undefined) {
         return res.status(400).send({ message: 'Missing required fields' });
-    }
+    }*/
 
     // Define the parameters to check if the restaurant already exists
     const getParams = {
@@ -45,7 +45,7 @@ app.post('/restaurants', async (req, res) => {
 
         if (result.Item) {
             // Restaurant already exists
-            res.status(400).send({ message: 'Restaurant already exists' });
+            res.status(409).send({ success: false , message: 'Restaurant already exists' });
         } else {
             // Restaurant does not exist, add it to the table
             const putParams = {
@@ -55,11 +55,11 @@ app.post('/restaurants', async (req, res) => {
 
             await dynamodb.put(putParams).promise();
 
-            res.status(201).send({ message: 'Restaurant added successfully' });
+            res.status(200).send({ success: true });
         }
     } catch (error) {
         console.error('Error adding restaurant:', error);
-        res.status(500).send({ message: 'An error occurred while adding the restaurant' });
+        res.status(500).send('Internal Server Error');
     }
 });
 
@@ -145,14 +145,14 @@ app.delete('/restaurants/:restaurantName', async (req, res) => {
             await dynamodb.delete(deleteParams).promise();
 
             // Return success message
-            res.status(200).send({ message: 'Restaurant deleted successfully' });
+            res.status(200).send({ success: true });
         } else {
             // Restaurant not found
             res.status(404).send({ message: 'No such restaurant exists to delete' });
         }
     } catch (error) {
         console.error('Error deleting restaurant:', error);
-        res.status(500).send({ message: 'An error occurred while deleting the restaurant' });
+        res.status(500).send('Internal Server Error');
     }
 });
 
@@ -256,7 +256,7 @@ app.get('/restaurants/cuisine/:cuisine', async (req, res) => {
         }
     } catch (error) {
         console.error('Error retrieving top-rated restaurants:', error);
-        res.status(500).send({ message: 'An error occurred while retrieving top-rated restaurants' });
+        res.status(500).send('Internal Server Error');
     }
 });
 
@@ -309,6 +309,7 @@ app.get('/restaurants/region/:region/cuisine/:cuisine', async (req, res) => {
     const region = req.params.region;
     const cuisine = req.params.cuisine;
     let limit = parseInt(req.query.limit) || 10;
+    const minRating = parseFloat(req.query.minRating) || 0; // Default to 0 if no minimum rating is provided
 
     // Ensure the limit is within the acceptable range
     if (limit > 100) {
@@ -325,9 +326,11 @@ app.get('/restaurants/region/:region/cuisine/:cuisine', async (req, res) => {
         TableName: 'Restaurants',
         IndexName: 'GeoLocationCuisineRatingIndex', // The name of the GSI
         KeyConditionExpression: 'geo_location = :region AND cuisine_type = :cuisine',
+        FilterExpression: 'rating >= :minRating', // Filter by minimum rating
         ExpressionAttributeValues: {
             ':region': region,
-            ':cuisine': cuisine
+            ':cuisine': cuisine,
+            ':minRating': minRating
         },
         ScanIndexForward: false, // Sorts results by rating in descending order
         Limit: limit
@@ -342,13 +345,14 @@ app.get('/restaurants/region/:region/cuisine/:cuisine', async (req, res) => {
             res.status(200).send(result.Items);
         } else {
             // No restaurants found
-            res.status(404).send({ message: 'No restaurants found for the specified region and cuisine' });
+            res.status(404).send({ message: 'No restaurants found for the specified region, cuisine, and rating' });
         }
     } catch (error) {
         console.error('Error retrieving restaurants:', error);
         res.status(500).send({ message: 'An error occurred while retrieving the restaurants' });
     }
 });
+
 
 
 app.listen(80, () => {
