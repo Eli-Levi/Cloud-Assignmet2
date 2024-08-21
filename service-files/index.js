@@ -60,6 +60,7 @@ app.post('/restaurants', async (req, res) => {
         };
 
         await dynamodb.put(putParams).promise();
+        console.log(putParams);
         res.status(200).send({ success: true });
     } catch (error) {
         console.error('Error adding restaurant:', error);
