@@ -181,14 +181,40 @@ export class RestaurantsCdkStack extends cdk.Stack {
         readCapacity: 1,
         writeCapacity: 1,
       });
+
+
+       // GSI for querying top-rated restaurants by geo_location and rating
+       table.addGlobalSecondaryIndex({
+        indexName: 'GeoLocationIndex',
+        partitionKey: { name: 'geo_location', type: dynamodb.AttributeType.STRING },
+        sortKey: { name: 'rating', type: dynamodb.AttributeType.STRING }, 
+        projectionType: dynamodb.ProjectionType.ALL,
+      });
+
+      // GSI for querying top-rated restaurants by cuisine and rating
+      table.addGlobalSecondaryIndex({
+        indexName: 'CuisineIndex',
+        partitionKey: { name: 'cuisine', type: dynamodb.AttributeType.STRING },
+        sortKey: { name: 'rating', type: dynamodb.AttributeType.STRING }, 
+        projectionType: dynamodb.ProjectionType.ALL,
+      });
+
+      // GSI for querying top-rated restaurants by geo_location and cuisine
+      table.addGlobalSecondaryIndex({
+        indexName: 'GeoCuisineIndex',
+        partitionKey: { name: 'geo_location', type: dynamodb.AttributeType.STRING },
+        sortKey: { name: 'cuisine', type: dynamodb.AttributeType.STRING }, 
+        projectionType: dynamodb.ProjectionType.ALL,
+      });
       
+      /*
       // GSI for querying top-rated restaurants by geo_location and cuisine_type
       table.addGlobalSecondaryIndex({
-        indexName: 'GeoLocationCuisineRatingIndex',
+        indexName: 'GeoCuisineIndex',
         partitionKey: { name: 'geo_location', type: dynamodb.AttributeType.STRING },
         sortKey: { name: 'cuisine_type_rating', type: dynamodb.AttributeType.STRING }, // Combined key: cuisine_type#rating
         projectionType: dynamodb.ProjectionType.ALL,
-      });
+      });*/
       
        // GSI for RestaurantNameIndex
        table.addGlobalSecondaryIndex({
@@ -196,6 +222,7 @@ export class RestaurantsCdkStack extends cdk.Stack {
         partitionKey: { name: 'restaurant_name ', type: dynamodb.AttributeType.STRING },
         projectionType: dynamodb.ProjectionType.ALL,
       });    
+      
     
       // Output the table name
       new cdk.CfnOutput(this, 'TableName', {

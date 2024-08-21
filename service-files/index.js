@@ -26,16 +26,16 @@ app.post('/restaurants', async (req, res) => {
     const dynamodb = new AWS.DynamoDB.DocumentClient();
 
     const restaurant = req.body;
-    const { restaurant_id, restaurant_name, geo_location, cuisine_type, rating } = restaurant; // Ensure these fields are present
+    const { restaurant_id, restaurant_name, geo_location, cuisine, rating } = restaurant; // Ensure these fields are present
 
     /*// Input validation
-    if (!restaurant_id || !restaurant_name || !geo_location || !cuisine_type || rating === undefined) {
+    if (!restaurant_id || !restaurant_name || !geo_location || !cuisine || rating === undefined) {
         return res.status(400).send({ message: 'Missing required fields' });
     }*/
 
     // Define the parameters to check if the restaurant already exists
     const getParams = {
-        TableName: 'Restaurants',
+        TableName: TABLE_NAME,
         Key: { restaurant_id }
     };
 
@@ -49,7 +49,7 @@ app.post('/restaurants', async (req, res) => {
         } else {
             // Restaurant does not exist, add it to the table
             const putParams = {
-                TableName: 'Restaurants',
+                TableName: TABLE_NAME,
                 Item: restaurant // Ensure all required attributes are present
             };
 
@@ -78,7 +78,7 @@ app.get('/restaurants/:restaurantName', async (req, res) => {
 
     // Define the parameters for querying the DynamoDB table using the GSI
     const queryParams = {
-        TableName: 'Restaurants',
+        TableName: TABLE_NAME,
         IndexName: 'RestaurantNameIndex', // Ensure this matches the exact name used when creating the GSI
         KeyConditionExpression: 'restaurant_name = :name',
         ExpressionAttributeValues: {
@@ -118,7 +118,7 @@ app.delete('/restaurants/:restaurantName', async (req, res) => {
 
     // Define the parameters for querying the DynamoDB table using the GSI
     const queryParams = {
-        TableName: 'Restaurants',
+        TableName: TABLE_NAME,
         IndexName: 'RestaurantNameIndex', // Ensure this matches the exact name used when creating the GSI
         KeyConditionExpression: 'restaurant_name = :name',
         ExpressionAttributeValues: {
@@ -135,7 +135,7 @@ app.delete('/restaurants/:restaurantName', async (req, res) => {
 
             // Define the parameters for deleting the item from the table
             const deleteParams = {
-                TableName: 'Restaurants',
+                TableName: TABLE_NAME,
                 Key: {
                     restaurant_id: restaurantId
                 }
@@ -167,7 +167,7 @@ app.post('/restaurants/rating', async (req, res) => {
 
     // Define the parameters for querying the DynamoDB table using the GSI
     const queryParams = {
-        TableName: 'Restaurants',
+        TableName: TABLE_NAME,
         IndexName: 'RestaurantNameIndex', // The name of the GSI
         KeyConditionExpression: 'restaurant_name = :name',
         ExpressionAttributeValues: {
@@ -192,7 +192,7 @@ app.post('/restaurants/rating', async (req, res) => {
 
             // Define the parameters for updating the item in the table
             const updateParams = {
-                TableName: 'Restaurants',
+                TableName: TABLE_NAME,
                 Key: {
                     restaurant_id: restaurantId
                 },
@@ -233,9 +233,9 @@ app.get('/restaurants/cuisine/:cuisine', async (req, res) => {
 
     // Define the parameters for querying the DynamoDB table using the GSI
     const queryParams = {
-        TableName: 'Restaurants',
-        IndexName: 'GeoLocationCuisineRatingIndex', // The name of the GSI
-        KeyConditionExpression: 'cuisine_type = :cuisine',
+        TableName: TABLE_NAME,
+        IndexName: 'GeoCuisineIndex', // The name of the GSI
+        KeyConditionExpression: 'cuisine = :cuisine',
         ExpressionAttributeValues: {
             ':cuisine': cuisine
         },
@@ -275,8 +275,8 @@ app.get('/restaurants/region/:region', async (req, res) => {
 
     // Define the parameters for querying the DynamoDB table using the GSI
     const queryParams = {
-        TableName: 'Restaurants',
-        IndexName: 'GeoLocationCuisineRatingIndex', // The name of the GSI (assumes GSI on region and rating)
+        TableName: TABLE_NAME,
+        IndexName: 'GeoCuisineIndex', // The name of the GSI (assumes GSI on region and rating)
         KeyConditionExpression: 'region = :region',
         ExpressionAttributeValues: {
             ':region': region
@@ -323,9 +323,9 @@ app.get('/restaurants/region/:region/cuisine/:cuisine', async (req, res) => {
 
     // Define the parameters for querying the DynamoDB table using the GSI
     const queryParams = {
-        TableName: 'Restaurants',
-        IndexName: 'GeoLocationCuisineRatingIndex', // The name of the GSI
-        KeyConditionExpression: 'geo_location = :region AND cuisine_type = :cuisine',
+        TableName: TABLE_NAME,
+        IndexName: 'GeoCuisineIndex', // The name of the GSI
+        KeyConditionExpression: 'geo_location = :region AND cuisine = :cuisine',
         FilterExpression: 'rating >= :minRating', // Filter by minimum rating
         ExpressionAttributeValues: {
             ':region': region,
