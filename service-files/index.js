@@ -21,17 +21,63 @@ app.get('/', (req, res) => {
     res.send(response);
 });
 
+//test compliant? 
 app.post('/restaurants', async (req, res) => {
+    const AWS = require('aws-sdk');
+    const dynamodb = new AWS.DynamoDB.DocumentClient();
+
+    const { name, cuisine, region } = req.body;
+
+    if (!name || !cuisine || !region) {
+        return res.status(400).send({ success: false, message: 'Name, cuisine, and region are required' });
+    }
+
+    const restaurantId = `${region}-${name}`;
+
+    // Check if the restaurant already exists
+    const getParams = {
+        TableName: TABLE_NAME,
+        Key: { restaurant_id: restaurantId }
+    };
+
+    try {
+        const result = await dynamodb.get(getParams).promise();
+
+        if (result.Item) {
+            return res.status(409).send({ success: false, message: 'Restaurant already exists' });
+        }
+
+        // Restaurant does not exist, add it to the table
+        const putParams = {
+            TableName: TABLE_NAME,
+            Item: {
+                restaurant_id: restaurantId,
+                restaurant_name: name,
+                cuisine_type: cuisine,
+                geo_location: region,
+                rating: 0 // Default rating
+            }
+        };
+
+        await dynamodb.put(putParams).promise();
+        res.status(200).send({ success: true });
+    } catch (error) {
+        console.error('Error adding restaurant:', error);
+        res.status(500).send({ success: false, message: 'An error occurred while adding the restaurant' });
+    }
+});
+
+/*app.post('/restaurants', async (req, res) => {
     const AWS = require('aws-sdk');
     const dynamodb = new AWS.DynamoDB.DocumentClient();
 
     const restaurant = req.body;
     const { restaurant_id, restaurant_name, geo_location, cuisine, rating } = restaurant; // Ensure these fields are present
 
-    /*// Input validation
+    // Input validation
     if (!restaurant_id || !restaurant_name || !geo_location || !cuisine || rating === undefined) {
         return res.status(400).send({ message: 'Missing required fields' });
-    }*/
+    }
 
     // Define the parameters to check if the restaurant already exists
     const getParams = {
@@ -62,7 +108,7 @@ app.post('/restaurants', async (req, res) => {
         res.status(500).send('Internal Server Error');
     }
 });
-
+*/
 
 
 app.get('/restaurants/:restaurantName', async (req, res) => {
