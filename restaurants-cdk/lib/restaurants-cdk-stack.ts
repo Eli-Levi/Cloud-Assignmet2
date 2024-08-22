@@ -203,7 +203,7 @@ export class RestaurantsCdkStack extends cdk.Stack {
       table.addGlobalSecondaryIndex({
         indexName: 'GeoCuisineIndex',
         partitionKey: { name: 'GeoRegion', type: dynamodb.AttributeType.STRING },
-        sortKey: { name: 'cuisine_rating', type: dynamodb.AttributeType.STRING }, 
+        sortKey: { name: 'cuisine', type: dynamodb.AttributeType.STRING }, 
         projectionType: dynamodb.ProjectionType.ALL,
       });
   

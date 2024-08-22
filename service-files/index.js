@@ -126,7 +126,7 @@ app.delete('/restaurants/:restaurantName', async (req, res) => {
         const result = await dynamodb.get(del_param).promise();
 
         
-        if (result.Items && result.Items.length > 0) {
+        if (result.Item) {
 
             // Perform the delete operation
             await dynamodb.delete(del_param).promise();
@@ -204,42 +204,40 @@ app.get('/restaurants/cuisine/:cuisine', async (req, res) => {
     let limit = parseInt(req.query.limit, 10) || 10;
     const minimum_rating = parseFloat(req.query.minRating) || 0;
 
-    // Ensure the limit is within the acceptable range
     if (limit > 100) {
         limit = 100;
     }
 
-    // Input validation
     if (!cuisine) {
         console.error('GET /restaurants/cuisine/:cuisine', 'Missing required fields');
-        res.status(400).send({ success: false, message: 'Missing required fields' });
-        return;
+        return res.status(400).send({ success: false, message: 'Missing required fields' });
     }
     
-    // Define the parameters for querying the DynamoDB table using the GSI
     const queryParams = {
         TableName: TABLE_NAME,
-        IndexName: 'CuisineRatingIndex', // The name of the GSI
+        IndexName: 'CuisineRatingIndex',
         KeyConditionExpression: 'cuisine = :cuisine',
         ExpressionAttributeValues: {
             ':cuisine': cuisine
         },
-        ScanIndexForward: false, // This ensures that results are sorted in descending order by rating
+        ScanIndexForward: false,
         Limit: limit
     };
 
     try {
-        // Perform the query operation to get the top-rated restaurants by cuisine
         const result = await dynamodb.query(queryParams).promise();
 
-        // Filter results based on minRating
-        const filteredRestaurants = result.Items.filter(item => item.rating >= minimum_rating);
+        const filteredRestaurants = result.Items.filter(item => item.rating >= minimum_rating)
+            .map(item => ({
+                name: item.RestaurantNameKey,
+                cuisine: item.cuisine,
+                rating: item.rating,
+                region: item.GeoRegion
+            }));
 
         if (filteredRestaurants.length > 0) {
-            // Return the list of top-rated restaurants
             res.status(200).json(filteredRestaurants);
         } else {
-            // No restaurants found for the given cuisine
             res.status(404).send({ message: 'No restaurants found for this cuisine' });
         }
     } catch (error) {
@@ -248,48 +246,45 @@ app.get('/restaurants/cuisine/:cuisine', async (req, res) => {
     }
 });
 
-
 app.get('/restaurants/region/:region', async (req, res) => {
     const region = req.params.region;
     let limit = parseInt(req.query.limit, 10) || 10;
     const minimum_rating = parseFloat(req.query.minRating) || 0;
 
-    // Ensure the limit is within the acceptable range
     if (limit > 100) {
         limit = 100;
     }
 
-    // Input validation
     if (!region) {
         console.error('GET /restaurants/region/:region', 'Missing required fields');
-        res.status(400).send({ success: false, message: 'Missing required fields' });
-        return;
+        return res.status(400).send({ success: false, message: 'Missing required fields' });
     }
 
-    // Define the parameters for querying the DynamoDB table using the GSI
     const queryParams = {
         TableName: TABLE_NAME,
-        IndexName: 'GeoRegionRatingIndex', // The name of the GSI
+        IndexName: 'GeoRegionRatingIndex',
         KeyConditionExpression: 'GeoRegion = :region',
         ExpressionAttributeValues: {
             ':region': region
         },
-        ScanIndexForward: false, // This ensures that results are sorted in descending order by rating
+        ScanIndexForward: false,
         Limit: limit
     };
 
     try {
-        // Perform the query operation to get the top-rated restaurants by region
         const result = await dynamodb.query(queryParams).promise();
 
-        // Filter results based on if not using FilterExpression in DynamoDB query
-        const filteredRestaurants = result.Items.filter(item => item.rating >= minimum_rating);
+        const filteredRestaurants = result.Items.filter(item => item.rating >= minimum_rating)
+            .map(item => ({
+                name: item.RestaurantNameKey,
+                cuisine: item.cuisine,
+                rating: item.rating,
+                region: item.GeoRegion
+            }));
 
         if (filteredRestaurants.length > 0) {
-            // Return the list of top-rated restaurants
             res.status(200).json(filteredRestaurants);
         } else {
-            // No restaurants found for the given region
             res.status(404).send({ message: 'No restaurants found for this region' });
         }
     } catch (error) {
@@ -298,58 +293,59 @@ app.get('/restaurants/region/:region', async (req, res) => {
     }
 });
 
-
 app.get('/restaurants/region/:region/cuisine/:cuisine', async (req, res) => {
     const region = req.params.region;
     const cuisine = req.params.cuisine;
+    const minRating = parseFloat(req.query.minRating) || 0;
     let limit = parseInt(req.query.limit) || 10;
-    const minimum_rating = parseFloat(req.query.minRating) || 0; // Default to 0 if no minimum rating is provided
 
-    // Ensure the limit is within the acceptable range
     if (limit > 100) {
         limit = 100;
     }
 
-    // Input validation
     if (!region || !cuisine) {
         return res.status(400).send({ message: 'Both region and cuisine are required' });
     }
 
-    // Define the parameters for querying the DynamoDB table using the GSI
     const queryParams = {
         TableName: TABLE_NAME,
-        IndexName: 'GeoCuisineIndex', // The name of the GSI
+        IndexName: 'GeoCuisineIndex',
         KeyConditionExpression: 'GeoRegion = :region AND cuisine = :cuisine',
-        FilterExpression: 'rating >= :minRating', // Filter by minimum rating
+        FilterExpression: 'rating >= :minRating',
         ExpressionAttributeValues: {
             ':region': region,
             ':cuisine': cuisine,
             ':minRating': minRating
         },
-        ScanIndexForward: false, // Sorts results by rating in descending order
+        ScanIndexForward: false, // Descending order by rating
         Limit: limit
     };
 
     try {
-        // Perform the query operation
         const result = await dynamodb.query(queryParams).promise();
-
+        
         if (result.Items && result.Items.length > 0) {
-            // Restaurants found, return the details
-            res.status(200).json(result.Items); // correct to json form
+            const formattedItems = result.Items.map(item => ({
+                name: item.RestaurantNameKey,
+                cuisine: item.cuisine,
+                rating: item.rating,
+                region: item.GeoRegion
+            }));
+            res.status(200).json(formattedItems);
         } else {
-            // No restaurants found
             res.status(404).send({ message: 'No restaurants found for the specified region, cuisine, and rating' });
         }
     } catch (error) {
-        console.error('Error retrieving restaurants:', error);
+        console.error('Error retrieving restaurants:', error.stack);
         res.status(500).send('Internal Server Error');
     }
 });
 
 
-app.listen(80, () => {
-    console.log('Server is running on http://localhost:80');
+const PORT = process.env.PORT || 3001;
+app.listen(PORT, () => {
+    console.log(`Server is running on http://localhost:${PORT}`);
 });
+
 
 module.exports = { app };
