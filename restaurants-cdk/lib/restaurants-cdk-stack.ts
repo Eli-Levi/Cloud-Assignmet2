@@ -185,7 +185,7 @@ export class RestaurantsCdkStack extends cdk.Stack {
 
        // GSI for querying top-rated restaurants by geo_location and rating
        table.addGlobalSecondaryIndex({
-        indexName: 'GeoLocationIndex',
+        indexName: 'GeoLocationRatingIndex',
         partitionKey: { name: 'geo_location', type: dynamodb.AttributeType.STRING },
         sortKey: { name: 'rating', type: dynamodb.AttributeType.NUMBER }, 
         projectionType: dynamodb.ProjectionType.ALL,

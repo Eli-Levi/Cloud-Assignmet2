@@ -1,7 +1,6 @@
 const express = require('express');
-const AWS = require('aws-sdk');
 const RestaurantsMemcachedActions = require('./model/restaurantsMemcachedActions');
-
+const AWS = require('aws-sdk');
 const app = express();
 app.use(express.json());
 
@@ -33,6 +32,8 @@ app.post('/restaurants', async (req, res) => {
         return res.status(400).send({ success: false, message: 'Some fields are missing' });
     }
 
+    //creates unique id...
+    //const restaurantId = `${region}-${name}`;
 
     // Check if the restaurant already exists
     const getParams = {
@@ -51,7 +52,7 @@ app.post('/restaurants', async (req, res) => {
         const putParams = {
             TableName: TABLE_NAME,
             Item: {
-                RestaurantName: restaurant.name,
+                RestaurantNameKey: restaurant.name,
                 cuisine: restaurant.cuisine,
                 geo_location: restaurant.region,
                 rating: restaurant?.rating || 0 // Takes given rating if exists or else, sets rating to default rating of 0
@@ -129,7 +130,7 @@ app.get('/restaurants/:restaurantName', async (req, res) => {
         const result = await dynamodb.get(paramaters).promise();
 
         const json_restaurant = {
-            RestaurantName: result.Item.name, // perhaps just use restaurantName? 
+            RestaurantNameKey: result.Item.name, // perhaps just use restaurantName? 
             cuisine: result.Item.cuisine,
             geo_location: result.Item.geo_location,
             rating: result.Item?.rating || 0
@@ -167,7 +168,7 @@ app.delete('/restaurants/:restaurantName', async (req, res) => {
         const del_param = {
             TableName: TABLE_NAME,
             Key: {
-                RestaurantName: result.Item.name, // perhaps just use restaurantName? 
+                RestaurantNameKey: result.Item.name, // perhaps just use restaurantName? 
             }
         };
 
@@ -248,7 +249,7 @@ app.post('/restaurants/rating', async (req, res) => {
 app.get('/restaurants/cuisine/:cuisine', async (req, res) => {
     const cuisine = req.params.cuisine;
     let limit = parseInt(req.query.limit, 10) || 10;
-    const minimum_rating = parseFloat(req.query.minimum_rating) || 0;
+    const minimum_rating = parseFloat(req.query.minRating) || 0;
 
     // Ensure the limit is within the acceptable range
     if (limit > 100) {
@@ -278,7 +279,7 @@ app.get('/restaurants/cuisine/:cuisine', async (req, res) => {
         // Perform the query operation to get the top-rated restaurants by cuisine
         const result = await dynamodb.query(queryParams).promise();
 
-        // Filter results based on minimum_rating
+        // Filter results based on minRating
         const filteredRestaurants = result.Items.filter(item => item.rating >= minimum_rating);
 
         if (filteredRestaurants.length > 0) {
@@ -298,7 +299,7 @@ app.get('/restaurants/cuisine/:cuisine', async (req, res) => {
 app.get('/restaurants/region/:region', async (req, res) => {
     const region = req.params.region;
     let limit = parseInt(req.query.limit, 10) || 10;
-    const minimum_rating = parseFloat(req.query.minimum_rating) || 0;
+    const minimum_rating = parseFloat(req.query.minRating) || 0;
 
     // Ensure the limit is within the acceptable range
     if (limit > 100) {
@@ -328,7 +329,7 @@ app.get('/restaurants/region/:region', async (req, res) => {
         // Perform the query operation to get the top-rated restaurants by region
         const result = await dynamodb.query(queryParams).promise();
 
-        // Filter results based on minimum_rating if not using FilterExpression in DynamoDB query
+        // Filter results based on if not using FilterExpression in DynamoDB query
         const filteredRestaurants = result.Items.filter(item => item.rating >= minimum_rating);
 
         if (filteredRestaurants.length > 0) {
@@ -349,7 +350,7 @@ app.get('/restaurants/region/:region/cuisine/:cuisine', async (req, res) => {
     const region = req.params.region;
     const cuisine = req.params.cuisine;
     let limit = parseInt(req.query.limit) || 10;
-    const minimum_rating = parseFloat(req.query.minimum_rating) || 0; // Default to 0 if no minimum rating is provided
+    const minimum_rating = parseFloat(req.query.minRating) || 0; // Default to 0 if no minimum rating is provided
 
     // Ensure the limit is within the acceptable range
     if (limit > 100) {
@@ -366,11 +367,11 @@ app.get('/restaurants/region/:region/cuisine/:cuisine', async (req, res) => {
         TableName: TABLE_NAME,
         IndexName: 'GeoCuisineIndex', // The name of the GSI
         KeyConditionExpression: 'geo_location = :region AND cuisine = :cuisine',
-        FilterExpression: 'rating >= :minimum_rating', // Filter by minimum rating
+        FilterExpression: 'rating >= :minRating', // Filter by minimum rating
         ExpressionAttributeValues: {
             ':region': region,
             ':cuisine': cuisine,
-            ':minimum_rating': minimum_rating
+            ':minRating': minRating
         },
         ScanIndexForward: false, // Sorts results by rating in descending order
         Limit: limit
