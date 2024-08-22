@@ -1,4 +1,5 @@
 const express = require('express');
+const AWS = require('aws-sdk');
 const RestaurantsMemcachedActions = require('./model/restaurantsMemcachedActions');
 
 const app = express();
@@ -10,6 +11,9 @@ const AWS_REGION = process.env.AWS_REGION;
 const USE_CACHE = process.env.USE_CACHE === 'true';
 
 const memcachedActions = new RestaurantsMemcachedActions(MEMCACHED_CONFIGURATION_ENDPOINT);
+
+// Create a new DynamoDB instance
+const dynamodb = new AWS.DynamoDB.DocumentClient({ region: AWS_REGION });
 
 app.get('/', (req, res) => {
     const response = {
@@ -23,21 +27,17 @@ app.get('/', (req, res) => {
 
 //test compliant? 
 app.post('/restaurants', async (req, res) => {
-    const AWS = require('aws-sdk');
-    const dynamodb = new AWS.DynamoDB.DocumentClient();
+    const restaurant = req.body;
 
-    const { name, cuisine, region } = req.body;
-
-    if (!name || !cuisine || !region) {
-        return res.status(400).send({ success: false, message: 'Name, cuisine, and region are required' });
+    if (!restaurant.name || !restaurant.cuisine || !restaurant.region) {
+        return res.status(400).send({ success: false, message: 'Some fields are missing' });
     }
 
-    const restaurantId = `${region}-${name}`;
 
     // Check if the restaurant already exists
     const getParams = {
         TableName: TABLE_NAME,
-        Key: { restaurant_id: restaurantId }
+        Key: { RestaurantNameKey: restaurant.name }
     };
 
     try {
@@ -51,39 +51,35 @@ app.post('/restaurants', async (req, res) => {
         const putParams = {
             TableName: TABLE_NAME,
             Item: {
-                restaurant_id: restaurantId,
-                restaurant_name: name,
-                cuisine_type: cuisine,
-                geo_location: region,
-                rating: 0 // Default rating
+                RestaurantName: restaurant.name,
+                cuisine: restaurant.cuisine,
+                geo_location: restaurant.region,
+                rating: restaurant?.rating || 0 // Takes given rating if exists or else, sets rating to default rating of 0
             }
         };
 
         await dynamodb.put(putParams).promise();
         console.log(putParams);
-        res.status(200).send({ success: true });
+        res.status(200).json({ success: true });
     } catch (error) {
         console.error('Error adding restaurant:', error);
-        res.status(500).send({ success: false, message: 'An error occurred while adding the restaurant' });
+        res.status(500).send('Internal Server Error');
     }
 });
 
 /*app.post('/restaurants', async (req, res) => {
-    const AWS = require('aws-sdk');
-    const dynamodb = new AWS.DynamoDB.DocumentClient();
-
     const restaurant = req.body;
-    const { restaurant_id, restaurant_name, geo_location, cuisine, rating } = restaurant; // Ensure these fields are present
+    const { RestaurantName, restaurant_name, geo_location, cuisine, rating } = restaurant; // Ensure these fields are present
 
     // Input validation
-    if (!restaurant_id || !restaurant_name || !geo_location || !cuisine || rating === undefined) {
+    if (!RestaurantName || !restaurant_name || !geo_location || !cuisine || rating === undefined) {
         return res.status(400).send({ message: 'Missing required fields' });
     }
 
     // Define the parameters to check if the restaurant already exists
     const getParams = {
         TableName: TABLE_NAME,
-        Key: { restaurant_id }
+        Key: { RestaurantName }
     };
 
     try {
@@ -102,7 +98,7 @@ app.post('/restaurants', async (req, res) => {
 
             await dynamodb.put(putParams).promise();
 
-            res.status(200).send({ success: true });
+            res.status(200).json({ success: true });
         }
     } catch (error) {
         console.error('Error adding restaurant:', error);
@@ -113,9 +109,6 @@ app.post('/restaurants', async (req, res) => {
 
 
 app.get('/restaurants/:restaurantName', async (req, res) => {
-    const AWS = require('aws-sdk');
-    const dynamodb = new AWS.DynamoDB.DocumentClient();
-
     const restaurantName = req.params.restaurantName;
 
     // Input validation
@@ -123,39 +116,40 @@ app.get('/restaurants/:restaurantName', async (req, res) => {
         return res.status(400).send({ message: 'Restaurant name is required' });
     }
 
-    // Define the parameters for querying the DynamoDB table using the GSI
-    const queryParams = {
+    // Check if the restaurant exists in the DynamoDB table
+    const paramaters = {
         TableName: TABLE_NAME,
-        IndexName: 'RestaurantNameIndex', // Ensure this matches the exact name used when creating the GSI
-        KeyConditionExpression: 'restaurant_name = :name',
-        ExpressionAttributeValues: {
-            ':name': restaurantName
+        Key: {
+            RestaurantNameKey: restaurantName
         }
     };
 
     try {
-        // Perform the query operation
-        const result = await dynamodb.query(queryParams).promise();
+        // Perform the fetch operation
+        const result = await dynamodb.get(paramaters).promise();
+
+        const json_restaurant = {
+            RestaurantName: result.Item.name, // perhaps just use restaurantName? 
+            cuisine: result.Item.cuisine,
+            geo_location: result.Item.geo_location,
+            rating: result.Item?.rating || 0
+        }
 
         if (result.Items && result.Items.length > 0) {
             // Restaurant found, return the details
-            res.status(200).send(result.Items[0]);
+            res.status(200).json(json_restaurant);
         } else {
             // Restaurant not found
             res.status(404).send({ message: 'Restaurant not found' });
         }
     } catch (error) {
         console.error('Error retrieving restaurant:', error);
-        res.status(500).send({ message: 'An error occurred while retrieving the restaurant' });
+        res.status(500).send('Internal Server Error');
     }
 });
 
 
-
 app.delete('/restaurants/:restaurantName', async (req, res) => {
-    const AWS = require('aws-sdk');
-    const dynamodb = new AWS.DynamoDB.DocumentClient();
-
     const restaurantName = req.params.restaurantName;
 
     // Input validation
@@ -163,36 +157,27 @@ app.delete('/restaurants/:restaurantName', async (req, res) => {
         return res.status(400).send({ message: 'Restaurant name is required' });
     }
 
-    // Define the parameters for querying the DynamoDB table using the GSI
-    const queryParams = {
-        TableName: TABLE_NAME,
-        IndexName: 'RestaurantNameIndex', // Ensure this matches the exact name used when creating the GSI
-        KeyConditionExpression: 'restaurant_name = :name',
-        ExpressionAttributeValues: {
-            ':name': restaurantName
-        }
-    };
+    
 
     try {
         // Perform the query operation to find the restaurant by name
-        const result = await dynamodb.query(queryParams).promise();
+        const result = await dynamodb.get(del_param).promise();
+
+        // Check if the restaurant exists in the DynamoDB table
+        const del_param = {
+            TableName: TABLE_NAME,
+            Key: {
+                RestaurantName: result.Item.name, // perhaps just use restaurantName? 
+            }
+        };
 
         if (result.Items && result.Items.length > 0) {
-            const restaurantId = result.Items[0].restaurant_id;
-
-            // Define the parameters for deleting the item from the table
-            const deleteParams = {
-                TableName: TABLE_NAME,
-                Key: {
-                    restaurant_id: restaurantId
-                }
-            };
 
             // Perform the delete operation
-            await dynamodb.delete(deleteParams).promise();
+            await dynamodb.delete(del_param).promise();
 
             // Return success message
-            res.status(200).send({ success: true });
+            res.status(200).json({ success: true });
         } else {
             // Restaurant not found
             res.status(404).send({ message: 'No such restaurant exists to delete' });
@@ -206,29 +191,23 @@ app.delete('/restaurants/:restaurantName', async (req, res) => {
 
 
 app.post('/restaurants/rating', async (req, res) => {
-    const AWS = require('aws-sdk');
-    const dynamodb = new AWS.DynamoDB.DocumentClient();
-
     const restaurantName = req.body.name;
     const newRating = req.body.rating;
 
-    // Define the parameters for querying the DynamoDB table using the GSI
-    const queryParams = {
+    // Fetch restaurant from the DynamoDB table
+    const paramaters = {
         TableName: TABLE_NAME,
-        IndexName: 'RestaurantNameIndex', // The name of the GSI
-        KeyConditionExpression: 'restaurant_name = :name',
-        ExpressionAttributeValues: {
-            ':name': restaurantName
+        Key: {
+            RestaurantNameKey: restaurantName
         }
     };
 
     try {
         // Perform the query operation to find the restaurant by name
-        const result = await dynamodb.query(queryParams).promise();
+        const result = await dynamodb.get(paramaters).promise();
 
         if (result.Items && result.Items.length > 0) {
             const restaurant = result.Items[0];
-            const restaurantId = restaurant.restaurant_id;
 
             // Calculate the new average rating
             const currentRating = restaurant.rating || 0;
@@ -241,7 +220,7 @@ app.post('/restaurants/rating', async (req, res) => {
             const updateParams = {
                 TableName: TABLE_NAME,
                 Key: {
-                    restaurant_id: restaurantId
+                    RestaurantNameKey: restaurantName
                 },
                 UpdateExpression: 'set rating = :rating, rating_count = :count',
                 ExpressionAttributeValues: {
@@ -254,34 +233,39 @@ app.post('/restaurants/rating', async (req, res) => {
             await dynamodb.update(updateParams).promise();
 
             // Return success message
-            res.status(200).send({ message: 'Rating added successfully', newAverageRating });
+            res.status(200).json({ success: true });
         } else {
             // Restaurant not found
             res.status(404).send({ message: 'Restaurant not found' });
         }
     } catch (error) {
         console.error('Error adding rating:', error);
-        res.status(500).send({ message: 'An error occurred while adding the rating' });
+        res.status(500).send('Internal Server Error');
     }
 });
 
 
 app.get('/restaurants/cuisine/:cuisine', async (req, res) => {
-    const AWS = require('aws-sdk');
-    const dynamodb = new AWS.DynamoDB.DocumentClient();
-
     const cuisine = req.params.cuisine;
     let limit = parseInt(req.query.limit, 10) || 10;
+    const minimum_rating = parseFloat(req.query.minimum_rating) || 0;
 
     // Ensure the limit is within the acceptable range
     if (limit > 100) {
         limit = 100;
     }
 
+    // Input validation
+    if (!cuisine) {
+        console.error('GET /restaurants/cuisine/:cuisine', 'Missing required fields');
+        res.status(400).send({ success: false, message: 'Missing required fields' });
+        return;
+    }
+    
     // Define the parameters for querying the DynamoDB table using the GSI
     const queryParams = {
         TableName: TABLE_NAME,
-        IndexName: 'GeoCuisineIndex', // The name of the GSI
+        IndexName: 'CuisineRatingIndex', // The name of the GSI
         KeyConditionExpression: 'cuisine = :cuisine',
         ExpressionAttributeValues: {
             ':cuisine': cuisine
@@ -294,9 +278,12 @@ app.get('/restaurants/cuisine/:cuisine', async (req, res) => {
         // Perform the query operation to get the top-rated restaurants by cuisine
         const result = await dynamodb.query(queryParams).promise();
 
-        if (result.Items && result.Items.length > 0) {
+        // Filter results based on minimum_rating
+        const filteredRestaurants = result.Items.filter(item => item.rating >= minimum_rating);
+
+        if (filteredRestaurants.length > 0) {
             // Return the list of top-rated restaurants
-            res.status(200).send(result.Items);
+            res.status(200).json(filteredRestaurants);
         } else {
             // No restaurants found for the given cuisine
             res.status(404).send({ message: 'No restaurants found for this cuisine' });
@@ -309,22 +296,27 @@ app.get('/restaurants/cuisine/:cuisine', async (req, res) => {
 
 
 app.get('/restaurants/region/:region', async (req, res) => {
-    const AWS = require('aws-sdk');
-    const dynamodb = new AWS.DynamoDB.DocumentClient();
-
     const region = req.params.region;
     let limit = parseInt(req.query.limit, 10) || 10;
+    const minimum_rating = parseFloat(req.query.minimum_rating) || 0;
 
     // Ensure the limit is within the acceptable range
     if (limit > 100) {
         limit = 100;
     }
 
+    // Input validation
+    if (!region) {
+        console.error('GET /restaurants/region/:region', 'Missing required fields');
+        res.status(400).send({ success: false, message: 'Missing required fields' });
+        return;
+    }
+
     // Define the parameters for querying the DynamoDB table using the GSI
     const queryParams = {
         TableName: TABLE_NAME,
-        IndexName: 'GeoCuisineIndex', // The name of the GSI (assumes GSI on region and rating)
-        KeyConditionExpression: 'region = :region',
+        IndexName: 'GeoLocationRatingIndex', // The name of the GSI
+        KeyConditionExpression: 'geo_location = :region',
         ExpressionAttributeValues: {
             ':region': region
         },
@@ -336,27 +328,28 @@ app.get('/restaurants/region/:region', async (req, res) => {
         // Perform the query operation to get the top-rated restaurants by region
         const result = await dynamodb.query(queryParams).promise();
 
-        if (result.Items && result.Items.length > 0) {
+        // Filter results based on minimum_rating if not using FilterExpression in DynamoDB query
+        const filteredRestaurants = result.Items.filter(item => item.rating >= minimum_rating);
+
+        if (filteredRestaurants.length > 0) {
             // Return the list of top-rated restaurants
-            res.status(200).send(result.Items);
+            res.status(200).json(filteredRestaurants);
         } else {
             // No restaurants found for the given region
             res.status(404).send({ message: 'No restaurants found for this region' });
         }
     } catch (error) {
         console.error('Error retrieving top-rated restaurants:', error);
-        res.status(500).send({ message: 'An error occurred while retrieving top-rated restaurants' });
+        res.status(500).send('Internal Server Error');
     }
 });
 
-app.get('/restaurants/region/:region/cuisine/:cuisine', async (req, res) => {
-    const AWS = require('aws-sdk');
-    const dynamodb = new AWS.DynamoDB.DocumentClient();
 
+app.get('/restaurants/region/:region/cuisine/:cuisine', async (req, res) => {
     const region = req.params.region;
     const cuisine = req.params.cuisine;
     let limit = parseInt(req.query.limit) || 10;
-    const minRating = parseFloat(req.query.minRating) || 0; // Default to 0 if no minimum rating is provided
+    const minimum_rating = parseFloat(req.query.minimum_rating) || 0; // Default to 0 if no minimum rating is provided
 
     // Ensure the limit is within the acceptable range
     if (limit > 100) {
@@ -373,11 +366,11 @@ app.get('/restaurants/region/:region/cuisine/:cuisine', async (req, res) => {
         TableName: TABLE_NAME,
         IndexName: 'GeoCuisineIndex', // The name of the GSI
         KeyConditionExpression: 'geo_location = :region AND cuisine = :cuisine',
-        FilterExpression: 'rating >= :minRating', // Filter by minimum rating
+        FilterExpression: 'rating >= :minimum_rating', // Filter by minimum rating
         ExpressionAttributeValues: {
             ':region': region,
             ':cuisine': cuisine,
-            ':minRating': minRating
+            ':minimum_rating': minimum_rating
         },
         ScanIndexForward: false, // Sorts results by rating in descending order
         Limit: limit
@@ -389,14 +382,14 @@ app.get('/restaurants/region/:region/cuisine/:cuisine', async (req, res) => {
 
         if (result.Items && result.Items.length > 0) {
             // Restaurants found, return the details
-            res.status(200).send(result.Items);
+            res.status(200).json(result.Items); // correct to json form
         } else {
             // No restaurants found
             res.status(404).send({ message: 'No restaurants found for the specified region, cuisine, and rating' });
         }
     } catch (error) {
         console.error('Error retrieving restaurants:', error);
-        res.status(500).send({ message: 'An error occurred while retrieving the restaurants' });
+        res.status(500).send('Internal Server Error');
     }
 });
 
