@@ -24,9 +24,9 @@ export class RestaurantsCdkStack extends cdk.Stack {
 
     this.createNatGatewayForPrivateSubnet(vpc);
 
-    const memcachedConfigurationEndpoint = this.createMemcachedSingleInstaceInPublicSubnetForTestingPurpose(vpc, labRole);
+    //const memcachedConfigurationEndpoint = this.createMemcachedSingleInstaceInPublicSubnetForTestingPurpose(vpc, labRole);
     // Students TODO: Comment out the above line and uncomment the below line to use Elasticache, for the testing phase
-    // const memcachedConfigurationEndpoint = this.createMemcachedElasticache(vpc, labRole);
+    const memcachedConfigurationEndpoint = this.createMemcachedElasticache(vpc, labRole);
 
     const table = this.createDynamoDBTable();
 
@@ -159,17 +159,6 @@ export class RestaurantsCdkStack extends cdk.Stack {
     });
     return bucket;
   }
-/* original first half of the function
-  private createDynamoDBTable() {
-    // Students TODO: Change the table schema as needed
-
-    const table = new dynamodb.Table(this, 'Restaurants', {
-      partitionKey: { name: 'SimpleKey', type: dynamodb.AttributeType.STRING },
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
-      billingMode: dynamodb.BillingMode.PROVISIONED,
-      readCapacity: 1, // Note for students: you may need to change this num read capacity for scaling testing if you belive that is right
-      writeCapacity: 1, // Note for students: you may need to change this num write capacity for scaling testing if you belive that is right
-    });*/
   
     private createDynamoDBTable() {
       // Students TODO: Change the table schema as needed

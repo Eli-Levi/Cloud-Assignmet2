@@ -25,14 +25,12 @@ app.get('/', (req, res) => {
 });
 
 app.post('/restaurants', async (req, res) => {
-
     const restaurant = req.body;
 
     if (!restaurant.name || !restaurant.cuisine || !restaurant.region) {
         return res.status(400).send({ success: false, message: 'Some fields are missing' });
     }
 
-    // Check if the restaurant already exists
     const getParams = {
         TableName: TABLE_NAME,
         Key: { RestaurantNameKey: restaurant.name }
@@ -45,18 +43,23 @@ app.post('/restaurants', async (req, res) => {
             return res.status(409).send({ success: false, message: 'Restaurant already exists' });
         }
 
-        // Restaurant does not exist, add it to the table
         const putParams = {
             TableName: TABLE_NAME,
             Item: {
                 RestaurantNameKey: restaurant.name,
                 cuisine: restaurant.cuisine,
                 GeoRegion: restaurant.region,
-                rating: restaurant?.rating || 0 // Takes given rating if exists or else, sets rating to default rating of 0
+                rating: restaurant?.rating || 0
             }
         };
 
         await dynamodb.put(putParams).promise();
+
+        if (USE_CACHE) {
+            // Update the cache
+            await memcachedActions.addRestaurants(restaurant.name, putParams.Item);
+        }
+
         res.status(200).json({ success: true });
     } catch (error) {
         console.error('Error adding restaurant:', error);
@@ -72,30 +75,42 @@ app.get('/restaurants/:restaurantName', async (req, res) => {
         return res.status(400).send({ message: 'Restaurant name is required' });
     }
 
-    // Check if the restaurant exists in the DynamoDB table
-    const parameters = {
-        TableName: TABLE_NAME,
-        Key: {
-            RestaurantNameKey: restaurantName
-        }
-    };
-
     try {
-        // Perform the fetch operation
-        const result = await dynamodb.get(parameters).promise();
+        let restaurant;
 
-        if (!result.Item) {
-            // Restaurant not found or undefined
-            return res.status(404).send({ message: 'Restaurant not found' });
+        if (USE_CACHE) {
+            // Attempt to retrieve from cache
+            restaurant = await memcachedActions.getRestaurants(restaurantName);
         }
 
-        // Restaurant found, return the details as a flat object
-        const restaurant = {
-            name: result.Item.RestaurantNameKey,
-            cuisine: result.Item.cuisine,
-            rating: result.Item.rating || 0,
-            region: result.Item.GeoRegion
-        };
+        if (!restaurant) {
+            // If not in cache, query DynamoDB
+            const parameters = {
+                TableName: TABLE_NAME,
+                Key: {
+                    RestaurantNameKey: restaurantName
+                }
+            };
+            const result = await dynamodb.get(parameters).promise();
+
+            if (!result.Item) {
+                // Restaurant not found
+                return res.status(404).send({ message: 'Restaurant not found' });
+            }
+
+            // Convert DynamoDB response to restaurant object
+            restaurant = {
+                name: result.Item.RestaurantNameKey,
+                cuisine: result.Item.cuisine,
+                rating: result.Item.rating || 0,
+                region: result.Item.GeoRegion
+            };
+
+            if (USE_CACHE) {
+                // Update cache with the retrieved restaurant
+                await memcachedActions.addRestaurants(restaurantName, restaurant);
+            }
+        }
 
         res.status(200).json(restaurant);
     } catch (error) {
@@ -104,16 +119,13 @@ app.get('/restaurants/:restaurantName', async (req, res) => {
     }
 });
 
-
 app.delete('/restaurants/:restaurantName', async (req, res) => {
     const restaurantName = req.params.restaurantName;
 
-    // Input validation
     if (!restaurantName) {
         return res.status(400).send({ message: 'Restaurant name is required' });
     }
 
-    // Check if the restaurant exists in the DynamoDB table
     const del_param = {
         TableName: TABLE_NAME,
         Key: {
@@ -122,19 +134,18 @@ app.delete('/restaurants/:restaurantName', async (req, res) => {
     };
 
     try {
-        // Perform the query operation to find the restaurant by name
         const result = await dynamodb.get(del_param).promise();
 
-        
         if (result.Item) {
-
-            // Perform the delete operation
             await dynamodb.delete(del_param).promise();
 
-            // Return success message
+            if (USE_CACHE) {
+                // Remove from cache
+                await memcachedActions.deleteRestaurants(restaurantName);
+            }
+
             res.status(200).json({ success: true });
         } else {
-            // Restaurant not found
             res.status(404).send({ message: 'No such restaurant exists to delete' });
         }
     } catch (error) {
@@ -143,13 +154,11 @@ app.delete('/restaurants/:restaurantName', async (req, res) => {
     }
 });
 
-
 app.post('/restaurants/rating', async (req, res) => {
     const restaurantName = req.body.name;
     const newRating = req.body.rating;
 
-    // Fetch restaurant from the DynamoDB table
-    const paramaters = {
+    const parameters = {
         TableName: TABLE_NAME,
         Key: {
             RestaurantNameKey: restaurantName
@@ -157,20 +166,17 @@ app.post('/restaurants/rating', async (req, res) => {
     };
 
     try {
-        // Perform the query operation to find the restaurant by name
-        const result = await dynamodb.get(paramaters).promise();
+        const result = await dynamodb.get(parameters).promise();
 
         if (result.Item) {
             const restaurant = result.Item;
 
-            // Calculate the new average rating
             const currentRating = restaurant.rating || 0;
             const ratingCount = restaurant.rating_count || 0;
 
             const newRatingCount = ratingCount + 1;
             const newAverageRating = ((currentRating * ratingCount) + newRating) / newRatingCount;
 
-            // Define the parameters for updating the item in the table
             const updateParams = {
                 TableName: TABLE_NAME,
                 Key: {
@@ -183,13 +189,17 @@ app.post('/restaurants/rating', async (req, res) => {
                 }
             };
 
-            // Perform the update operation
             await dynamodb.update(updateParams).promise();
 
-            // Return success message
+            if (USE_CACHE) {
+                // Update cache with new rating
+                restaurant.rating = newAverageRating;
+                restaurant.rating_count = newRatingCount;
+                await memcachedActions.addRestaurants(restaurantName, restaurant);
+            }
+
             res.status(200).json({ success: true });
         } else {
-            // Restaurant not found
             res.status(404).send({ message: 'Restaurant not found' });
         }
     } catch (error) {
@@ -212,7 +222,15 @@ app.get('/restaurants/cuisine/:cuisine', async (req, res) => {
         console.error('GET /restaurants/cuisine/:cuisine', 'Missing required fields');
         return res.status(400).send({ success: false, message: 'Missing required fields' });
     }
-    
+
+    const cacheKey = `cuisine_${cuisine}_minRating_${minimum_rating}_limit_${limit}`;
+    let cachedData = await memcachedActions.getRestaurants(cacheKey);
+
+    if (cachedData) {
+        console.log('Returning data from cache');
+        return res.status(200).json(cachedData);
+    }
+
     const queryParams = {
         TableName: TABLE_NAME,
         IndexName: 'CuisineRatingIndex',
@@ -236,15 +254,17 @@ app.get('/restaurants/cuisine/:cuisine', async (req, res) => {
             }));
 
         if (filteredRestaurants.length > 0) {
-            res.status(200).json(filteredRestaurants);
+            await memcachedActions.addRestaurants(cacheKey, filteredRestaurants); // Cache the result
+            return res.status(200).json(filteredRestaurants);
         } else {
-            res.status(404).send({ message: 'No restaurants found for this cuisine' });
+            return res.status(404).send({ message: 'No restaurants found for this cuisine' });
         }
     } catch (error) {
         console.error('Error retrieving top-rated restaurants:', error);
         res.status(500).send('Internal Server Error');
     }
 });
+
 
 app.get('/restaurants/region/:region', async (req, res) => {
     const region = req.params.region;
@@ -258,6 +278,14 @@ app.get('/restaurants/region/:region', async (req, res) => {
     if (!region) {
         console.error('GET /restaurants/region/:region', 'Missing required fields');
         return res.status(400).send({ success: false, message: 'Missing required fields' });
+    }
+
+    const cacheKey = `region_${region}_minRating_${minimum_rating}_limit_${limit}`;
+    let cachedData = await memcachedActions.getRestaurants(cacheKey);
+
+    if (cachedData) {
+        console.log('Returning data from cache');
+        return res.status(200).json(cachedData);
     }
 
     const queryParams = {
@@ -283,15 +311,17 @@ app.get('/restaurants/region/:region', async (req, res) => {
             }));
 
         if (filteredRestaurants.length > 0) {
-            res.status(200).json(filteredRestaurants);
+            await memcachedActions.addRestaurants(cacheKey, filteredRestaurants); // Cache the result
+            return res.status(200).json(filteredRestaurants);
         } else {
-            res.status(404).send({ message: 'No restaurants found for this region' });
+            return res.status(404).send({ message: 'No restaurants found for this region' });
         }
     } catch (error) {
         console.error('Error retrieving top-rated restaurants:', error);
         res.status(500).send('Internal Server Error');
     }
 });
+
 
 app.get('/restaurants/region/:region/cuisine/:cuisine', async (req, res) => {
     const region = req.params.region;
@@ -305,6 +335,14 @@ app.get('/restaurants/region/:region/cuisine/:cuisine', async (req, res) => {
 
     if (!region || !cuisine) {
         return res.status(400).send({ message: 'Both region and cuisine are required' });
+    }
+
+    const cacheKey = `region_${region}_cuisine_${cuisine}_minRating_${minRating}_limit_${limit}`;
+    let cachedData = await memcachedActions.getRestaurants(cacheKey);
+
+    if (cachedData) {
+        console.log('Returning data from cache');
+        return res.status(200).json(cachedData);
     }
 
     const queryParams = {
@@ -323,7 +361,7 @@ app.get('/restaurants/region/:region/cuisine/:cuisine', async (req, res) => {
 
     try {
         const result = await dynamodb.query(queryParams).promise();
-        
+
         if (result.Items && result.Items.length > 0) {
             const formattedItems = result.Items.map(item => ({
                 name: item.RestaurantNameKey,
@@ -331,15 +369,17 @@ app.get('/restaurants/region/:region/cuisine/:cuisine', async (req, res) => {
                 rating: item.rating,
                 region: item.GeoRegion
             }));
-            res.status(200).json(formattedItems);
+            await memcachedActions.addRestaurants(cacheKey, formattedItems); // Cache the result
+            return res.status(200).json(formattedItems);
         } else {
-            res.status(404).send({ message: 'No restaurants found for the specified region, cuisine, and rating' });
+            return res.status(404).send({ message: 'No restaurants found for the specified region, cuisine, and rating' });
         }
     } catch (error) {
         console.error('Error retrieving restaurants:', error.stack);
         res.status(500).send('Internal Server Error');
     }
 });
+
 
 
 const PORT = process.env.PORT || 3001;
