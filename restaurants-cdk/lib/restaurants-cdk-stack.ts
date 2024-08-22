@@ -185,8 +185,8 @@ export class RestaurantsCdkStack extends cdk.Stack {
 
        // GSI for querying top-rated restaurants by geo_location and rating
        table.addGlobalSecondaryIndex({
-        indexName: 'GeoLocationRatingIndex',
-        partitionKey: { name: 'geo_location', type: dynamodb.AttributeType.STRING },
+        indexName: 'GeoRegionRatingIndex',
+        partitionKey: { name: 'GeoRegion', type: dynamodb.AttributeType.STRING },
         sortKey: { name: 'rating', type: dynamodb.AttributeType.NUMBER }, 
         projectionType: dynamodb.ProjectionType.ALL,
       });
@@ -202,27 +202,11 @@ export class RestaurantsCdkStack extends cdk.Stack {
       // GSI for querying top-rated restaurants by geo_location and cuisine
       table.addGlobalSecondaryIndex({
         indexName: 'GeoCuisineIndex',
-        partitionKey: { name: 'geo_location', type: dynamodb.AttributeType.STRING },
+        partitionKey: { name: 'GeoRegion', type: dynamodb.AttributeType.STRING },
         sortKey: { name: 'cuisine_rating', type: dynamodb.AttributeType.STRING }, 
         projectionType: dynamodb.ProjectionType.ALL,
       });
-      
-      /*
-      // GSI for querying top-rated restaurants by geo_location and cuisine_type
-      table.addGlobalSecondaryIndex({
-        indexName: 'GeoCuisineIndex',
-        partitionKey: { name: 'geo_location', type: dynamodb.AttributeType.STRING },
-        sortKey: { name: 'cuisine_type_rating', type: dynamodb.AttributeType.STRING }, // Combined key: cuisine_type#rating
-        projectionType: dynamodb.ProjectionType.ALL,
-      });
-      
-       // GSI for RestaurantNameIndex
-       table.addGlobalSecondaryIndex({
-        indexName: 'RestaurantNameIndex',
-        partitionKey: { name: 'restaurant_name ', type: dynamodb.AttributeType.STRING },
-        projectionType: dynamodb.ProjectionType.ALL,
-      });    
-      */
+  
     
       // Output the table name
       new cdk.CfnOutput(this, 'TableName', {

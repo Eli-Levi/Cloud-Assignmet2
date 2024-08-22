@@ -19,21 +19,18 @@ app.get('/', (req, res) => {
         MEMCACHED_CONFIGURATION_ENDPOINT: MEMCACHED_CONFIGURATION_ENDPOINT,
         TABLE_NAME: TABLE_NAME,
         AWS_REGION: AWS_REGION,
-        USE_CACHE: USE_CACHE
+        //USE_CACHE: USE_CACHE ---> NOTE: Missing in original test. 
     };
     res.send(response);
 });
 
-//test compliant? 
 app.post('/restaurants', async (req, res) => {
+
     const restaurant = req.body;
 
     if (!restaurant.name || !restaurant.cuisine || !restaurant.region) {
         return res.status(400).send({ success: false, message: 'Some fields are missing' });
     }
-
-    //creates unique id...
-    //const restaurantId = `${region}-${name}`;
 
     // Check if the restaurant already exists
     const getParams = {
@@ -54,60 +51,18 @@ app.post('/restaurants', async (req, res) => {
             Item: {
                 RestaurantNameKey: restaurant.name,
                 cuisine: restaurant.cuisine,
-                geo_location: restaurant.region,
+                GeoRegion: restaurant.region,
                 rating: restaurant?.rating || 0 // Takes given rating if exists or else, sets rating to default rating of 0
             }
         };
 
         await dynamodb.put(putParams).promise();
-        console.log(putParams);
         res.status(200).json({ success: true });
     } catch (error) {
         console.error('Error adding restaurant:', error);
         res.status(500).send('Internal Server Error');
     }
 });
-
-/*app.post('/restaurants', async (req, res) => {
-    const restaurant = req.body;
-    const { RestaurantName, restaurant_name, geo_location, cuisine, rating } = restaurant; // Ensure these fields are present
-
-    // Input validation
-    if (!RestaurantName || !restaurant_name || !geo_location || !cuisine || rating === undefined) {
-        return res.status(400).send({ message: 'Missing required fields' });
-    }
-
-    // Define the parameters to check if the restaurant already exists
-    const getParams = {
-        TableName: TABLE_NAME,
-        Key: { RestaurantName }
-    };
-
-    try {
-        // Check if the restaurant already exists
-        const result = await dynamodb.get(getParams).promise();
-
-        if (result.Item) {
-            // Restaurant already exists
-            res.status(409).send({ success: false , message: 'Restaurant already exists' });
-        } else {
-            // Restaurant does not exist, add it to the table
-            const putParams = {
-                TableName: TABLE_NAME,
-                Item: restaurant // Ensure all required attributes are present
-            };
-
-            await dynamodb.put(putParams).promise();
-
-            res.status(200).json({ success: true });
-        }
-    } catch (error) {
-        console.error('Error adding restaurant:', error);
-        res.status(500).send('Internal Server Error');
-    }
-});
-*/
-
 
 app.get('/restaurants/:restaurantName', async (req, res) => {
     const restaurantName = req.params.restaurantName;
@@ -118,7 +73,7 @@ app.get('/restaurants/:restaurantName', async (req, res) => {
     }
 
     // Check if the restaurant exists in the DynamoDB table
-    const paramaters = {
+    const parameters = {
         TableName: TABLE_NAME,
         Key: {
             RestaurantNameKey: restaurantName
@@ -127,22 +82,22 @@ app.get('/restaurants/:restaurantName', async (req, res) => {
 
     try {
         // Perform the fetch operation
-        const result = await dynamodb.get(paramaters).promise();
+        const result = await dynamodb.get(parameters).promise();
 
-        const json_restaurant = {
-            RestaurantNameKey: result.Item.name, // perhaps just use restaurantName? 
+        if (!result.Item) {
+            // Restaurant not found or undefined
+            return res.status(404).send({ message: 'Restaurant not found' });
+        }
+
+        // Restaurant found, return the details as a flat object
+        const restaurant = {
+            name: result.Item.RestaurantNameKey,
             cuisine: result.Item.cuisine,
-            geo_location: result.Item.geo_location,
-            rating: result.Item?.rating || 0
-        }
+            rating: result.Item.rating || 0,
+            region: result.Item.GeoRegion
+        };
 
-        if (result.Items && result.Items.length > 0) {
-            // Restaurant found, return the details
-            res.status(200).json(json_restaurant);
-        } else {
-            // Restaurant not found
-            res.status(404).send({ message: 'Restaurant not found' });
-        }
+        res.status(200).json(restaurant);
     } catch (error) {
         console.error('Error retrieving restaurant:', error);
         res.status(500).send('Internal Server Error');
@@ -158,20 +113,19 @@ app.delete('/restaurants/:restaurantName', async (req, res) => {
         return res.status(400).send({ message: 'Restaurant name is required' });
     }
 
-    
+    // Check if the restaurant exists in the DynamoDB table
+    const del_param = {
+        TableName: TABLE_NAME,
+        Key: {
+            RestaurantNameKey: restaurantName
+        }
+    };
 
     try {
         // Perform the query operation to find the restaurant by name
         const result = await dynamodb.get(del_param).promise();
 
-        // Check if the restaurant exists in the DynamoDB table
-        const del_param = {
-            TableName: TABLE_NAME,
-            Key: {
-                RestaurantNameKey: result.Item.name, // perhaps just use restaurantName? 
-            }
-        };
-
+        
         if (result.Items && result.Items.length > 0) {
 
             // Perform the delete operation
@@ -190,7 +144,6 @@ app.delete('/restaurants/:restaurantName', async (req, res) => {
 });
 
 
-
 app.post('/restaurants/rating', async (req, res) => {
     const restaurantName = req.body.name;
     const newRating = req.body.rating;
@@ -207,8 +160,8 @@ app.post('/restaurants/rating', async (req, res) => {
         // Perform the query operation to find the restaurant by name
         const result = await dynamodb.get(paramaters).promise();
 
-        if (result.Items && result.Items.length > 0) {
-            const restaurant = result.Items[0];
+        if (result.Item) {
+            const restaurant = result.Item;
 
             // Calculate the new average rating
             const currentRating = restaurant.rating || 0;
@@ -316,8 +269,8 @@ app.get('/restaurants/region/:region', async (req, res) => {
     // Define the parameters for querying the DynamoDB table using the GSI
     const queryParams = {
         TableName: TABLE_NAME,
-        IndexName: 'GeoLocationRatingIndex', // The name of the GSI
-        KeyConditionExpression: 'geo_location = :region',
+        IndexName: 'GeoRegionRatingIndex', // The name of the GSI
+        KeyConditionExpression: 'GeoRegion = :region',
         ExpressionAttributeValues: {
             ':region': region
         },
@@ -366,7 +319,7 @@ app.get('/restaurants/region/:region/cuisine/:cuisine', async (req, res) => {
     const queryParams = {
         TableName: TABLE_NAME,
         IndexName: 'GeoCuisineIndex', // The name of the GSI
-        KeyConditionExpression: 'geo_location = :region AND cuisine = :cuisine',
+        KeyConditionExpression: 'GeoRegion = :region AND cuisine = :cuisine',
         FilterExpression: 'rating >= :minRating', // Filter by minimum rating
         ExpressionAttributeValues: {
             ':region': region,
@@ -393,7 +346,6 @@ app.get('/restaurants/region/:region/cuisine/:cuisine', async (req, res) => {
         res.status(500).send('Internal Server Error');
     }
 });
-
 
 
 app.listen(80, () => {
