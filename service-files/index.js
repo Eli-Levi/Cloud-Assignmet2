@@ -74,15 +74,23 @@ app.get('/restaurants/:restaurantName', async (req, res) => {
         return res.status(400).send({ message: 'Restaurant name is required' });
     }
 
-    // Check if the restaurant exists in the DynamoDB table
-    const parameters = {
-        TableName: TABLE_NAME,
-        Key: {
-            RestaurantNameKey: restaurantName
-        }
-    };
-
     try {
+        // Check if the restaurant exists in Memcached
+        const cachedRestaurant = await memcachedActions.getRestaurants(restaurantName);
+
+        if (cachedRestaurant) {
+            // Return the restaurant details from the cache
+            return res.status(200).json(cachedRestaurant);
+        }
+
+        // If not found in cache, check in DynamoDB
+        const parameters = {
+            TableName: TABLE_NAME,
+            Key: {
+                RestaurantNameKey: restaurantName
+            }
+        };
+
         // Perform the fetch operation
         const result = await dynamodb.get(parameters).promise();
 
@@ -91,7 +99,7 @@ app.get('/restaurants/:restaurantName', async (req, res) => {
             return res.status(404).send({ message: 'Restaurant not found' });
         }
 
-        // Restaurant found, return the details as a flat object
+        // Restaurant found, format the data
         const restaurant = {
             name: result.Item.RestaurantNameKey,
             cuisine: result.Item.cuisine,
@@ -99,6 +107,10 @@ app.get('/restaurants/:restaurantName', async (req, res) => {
             region: result.Item.GeoRegion
         };
 
+        // Store the restaurant details in Memcached
+        await memcachedActions.addRestaurants(restaurantName, restaurant);
+
+        // Return the restaurant details
         res.status(200).json(restaurant);
     } catch (error) {
         console.error('Error retrieving restaurant:', error);
@@ -106,7 +118,7 @@ app.get('/restaurants/:restaurantName', async (req, res) => {
     }
 });
 
-
+// double check delete logic
 app.delete('/restaurants/:restaurantName', async (req, res) => {
     const restaurantName = req.params.restaurantName;
 
@@ -115,29 +127,34 @@ app.delete('/restaurants/:restaurantName', async (req, res) => {
         return res.status(400).send({ message: 'Restaurant name is required' });
     }
 
-    // Check if the restaurant exists in the DynamoDB table
-    const del_param = {
-        TableName: TABLE_NAME,
-        Key: {
-            RestaurantNameKey: restaurantName
-        }
-    };
-
     try {
-        // Perform the query operation to find the restaurant by name
+        // Check if the restaurant exists in Memcached
+        const cachedRestaurant = await memcachedActions.getRestaurants(restaurantName);
+
+        if (cachedRestaurant) {
+            // If found in cache, delete from Memcached
+            await memcachedActions.deleteRestaurants(restaurantName);
+        }
+
+        // Check if the restaurant exists in DynamoDB
+        const del_param = {
+            TableName: TABLE_NAME,
+            Key: {
+                RestaurantNameKey: restaurantName
+            }
+        };
+
         const result = await dynamodb.get(del_param).promise();
 
-        
         if (result.Item) {
-
-            // Perform the delete operation
+            // Perform the delete operation in DynamoDB
             await dynamodb.delete(del_param).promise();
 
             // Return success message
-            res.status(200).json({ success: true });
+            return res.status(200).json({ success: true });
         } else {
             // Restaurant not found
-            res.status(404).send({ message: 'No such restaurant exists to delete' });
+            return res.status(404).send({ message: 'No such restaurant exists to delete' });
         }
     } catch (error) {
         console.error('Error deleting restaurant:', error);
