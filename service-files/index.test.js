@@ -24,7 +24,8 @@ describe('GET /', () => {
     expect(response.body).toEqual({
       MEMCACHED_CONFIGURATION_ENDPOINT: process.env.MEMCACHED_CONFIGURATION_ENDPOINT,
       TABLE_NAME: process.env.TABLE_NAME,
-      AWS_REGION: process.env.AWS_REGION
+      AWS_REGION: process.env.AWS_REGION,
+      USE_CACHE: process.env.USE_CACHE === 'true'
     });
   });
 });
