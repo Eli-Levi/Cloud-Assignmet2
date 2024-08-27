@@ -19,7 +19,7 @@ export class RestaurantsCdkStack extends cdk.Stack {
 
     // Students TODO Account Details: Change the vpcId to the VPC ID of your existing VPC
     const vpc = ec2.Vpc.fromLookup(this, 'VPC', {
-      vpcId: 'vpc-0317e42f1221f060b',
+      vpcId: 'vpc-0d087571a115d1351',
     });
 
     this.createNatGatewayForPrivateSubnet(vpc);
@@ -159,51 +159,50 @@ export class RestaurantsCdkStack extends cdk.Stack {
     });
     return bucket;
   }
+  private createDynamoDBTable() {
+    // Students TODO: Change the table schema as needed
+
+    const table = new dynamodb.Table(this, 'Restaurants', {
+      partitionKey: { name: 'RestaurantNameKey', type: dynamodb.AttributeType.STRING },
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      billingMode: dynamodb.BillingMode.PROVISIONED,
+      readCapacity: 1, // Note for students: you may need to change this num read capacity for scaling testing if you belive that is right
+      writeCapacity: 1, // Note for students: you may need to change this num write capacity for scaling testing if you belive that is right
+    });
+
+     // GSI for querying top-rated restaurants by geo_location and rating
+     table.addGlobalSecondaryIndex({
+      indexName: 'GeoRegionRatingIndex',
+      partitionKey: { name: 'GeoRegion', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'rating', type: dynamodb.AttributeType.NUMBER }, 
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
+    // GSI for querying top-rated restaurants by cuisine and rating
+    table.addGlobalSecondaryIndex({
+      indexName: 'CuisineRatingIndex',
+      partitionKey: { name: 'cuisine', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'rating', type: dynamodb.AttributeType.NUMBER }, 
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
+    // GSI for querying top-rated restaurants by geo_location and cuisine
+    table.addGlobalSecondaryIndex({
+      indexName: 'GeoCuisineIndex',
+      partitionKey: { name: 'GeoRegion', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'cuisine', type: dynamodb.AttributeType.STRING }, 
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
   
-    private createDynamoDBTable() {
-      // Students TODO: Change the table schema as needed
-  
-      const table = new dynamodb.Table(this, 'Restaurants', {
-        partitionKey: { name: 'RestaurantNameKey', type: dynamodb.AttributeType.STRING },
-        removalPolicy: cdk.RemovalPolicy.DESTROY,
-        billingMode: dynamodb.BillingMode.PROVISIONED,
-        readCapacity: 1, // Note for students: you may need to change this num read capacity for scaling testing if you belive that is right
-        writeCapacity: 1, // Note for students: you may need to change this num write capacity for scaling testing if you belive that is right
-      });
+    // Output the table name
+    new cdk.CfnOutput(this, 'TableName', {
+      value: table.tableName,
+    });
 
+    return table;
+}
 
-       // GSI for querying top-rated restaurants by geo_location and rating
-       table.addGlobalSecondaryIndex({
-        indexName: 'GeoRegionRatingIndex',
-        partitionKey: { name: 'GeoRegion', type: dynamodb.AttributeType.STRING },
-        sortKey: { name: 'rating', type: dynamodb.AttributeType.NUMBER }, 
-        projectionType: dynamodb.ProjectionType.ALL,
-      });
-
-      // GSI for querying top-rated restaurants by cuisine and rating
-      table.addGlobalSecondaryIndex({
-        indexName: 'CuisineRatingIndex',
-        partitionKey: { name: 'cuisine', type: dynamodb.AttributeType.STRING },
-        sortKey: { name: 'rating', type: dynamodb.AttributeType.NUMBER }, 
-        projectionType: dynamodb.ProjectionType.ALL,
-      });
-
-      // GSI for querying top-rated restaurants by geo_location and cuisine
-      table.addGlobalSecondaryIndex({
-        indexName: 'GeoCuisineIndex',
-        partitionKey: { name: 'GeoRegion', type: dynamodb.AttributeType.STRING },
-        sortKey: { name: 'cuisine', type: dynamodb.AttributeType.STRING }, 
-        projectionType: dynamodb.ProjectionType.ALL,
-      });
-  
-    
-      // Output the table name
-      new cdk.CfnOutput(this, 'TableName', {
-        value: table.tableName,
-      });
-
-      return table;
-  }
 
   createMemcachedSingleInstaceInPublicSubnetForTestingPurpose(vpc: ec2.IVpc, labRole: iam.IRole) {
     // Note for students: This is dev testing purposes only. you shold not change this code.
