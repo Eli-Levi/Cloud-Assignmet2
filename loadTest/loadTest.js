@@ -1,7 +1,7 @@
 const http = require('http');
 const assert = require('assert');
 
-const endPoint = 'Restau-LB8A1-Pqwh5Xbp1LWf-1344910045.us-east-1.elb.amazonaws.com';
+const endPoint = 'Restau-LB8A1-072zLk5EliCA-690384357.us-east-1.elb.amazonaws.com';
 const port = 80;
 
 const restaurantName = 'anExampleRestaurant';
