@@ -1,7 +1,6 @@
 const express = require('express');
 const AWS = require('aws-sdk');
 const RestaurantsMemcachedActions = require('./model/restaurantsMemcachedActions');
-const AWS = require('aws-sdk');
 const app = express();
 app.use(express.json());
 
